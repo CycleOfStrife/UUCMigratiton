@@ -36,8 +36,9 @@ podman run -itd --name mybox docker.io/busybox
 podman conatienr checkpoint --live-migration --predict-mode="SSPD" --dirty-file="test.csv" --ip=<linux02IP> --path="/migration" mybox
 
 ```
-#linux02
+
 ```
+#linux02
 mkdir /migration
 cd /migration
 podman container restore -i <the last file> mybox
