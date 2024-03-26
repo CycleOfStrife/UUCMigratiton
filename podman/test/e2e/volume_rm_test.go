@@ -1,0 +1,110 @@
+package integration
+
+import (
+	. "github.com/containers/podman/v4/test/utils"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gexec"
+)
+
+var _ = Describe("Podman volume rm", func() {
+
+	AfterEach(func() {
+		podmanTest.CleanupVolume()
+	})
+
+	It("podman volume rm", func() {
+		session := podmanTest.Podman([]string{"volume", "create", "myvol"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "rm", "myvol"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "ls"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+		Expect(session.OutputToStringArray()).To(BeEmpty())
+	})
+
+	It("podman volume rm with --force flag", func() {
+		session := podmanTest.Podman([]string{"create", "-v", "myvol:/myvol", ALPINE, "ls"})
+		cid := session.OutputToString()
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "rm", "myvol"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(Exit(2))
+		Expect(session.ErrorToString()).To(ContainSubstring(cid))
+
+		session = podmanTest.Podman([]string{"volume", "rm", "-t", "0", "-f", "myvol"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "ls"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+		Expect(session.OutputToStringArray()).To(BeEmpty())
+	})
+
+	It("podman volume remove bogus", func() {
+		session := podmanTest.Podman([]string{"volume", "rm", "bogus"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(Exit(1))
+	})
+
+	It("podman rm with --all flag", func() {
+		session := podmanTest.Podman([]string{"volume", "create", "myvol"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "create"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "rm", "-a"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "ls"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+		Expect(session.OutputToStringArray()).To(BeEmpty())
+	})
+
+	It("podman volume rm by partial name", func() {
+		session := podmanTest.Podman([]string{"volume", "create", "myvol"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "rm", "myv"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "ls"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+		Expect(session.OutputToStringArray()).To(BeEmpty())
+	})
+
+	It("podman volume rm by nonunique partial name", func() {
+		session := podmanTest.Podman([]string{"volume", "create", "myvol1"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "create", "myvol2"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+
+		session = podmanTest.Podman([]string{"volume", "rm", "myv"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).To(ExitWithError())
+
+		session = podmanTest.Podman([]string{"volume", "ls"})
+		session.WaitWithDefaultTimeout()
+		Expect(session).Should(ExitCleanly())
+		Expect(len(session.OutputToStringArray())).To(BeNumerically(">=", 2))
+	})
+})

@@ -1,0 +1,97 @@
+---
+run:
+  concurrency: 6
+  deadline: 5m
+  skip-dirs-use-default: true
+  skip-dirs:
+    - contrib
+    - dependencies
+  skip-files:
+    - swagger.go
+  modules-download-mode: readonly
+linters:
+  enable-all: true
+  disable:
+    # too many reports but requires attention
+    - depguard
+    - tagalign
+    # useful hints that should be addressed
+    - testifylint # all of reports that should be fixed
+    - nakedret
+    - gosmopolitan # usage of time.Local in pkg/k8s.io
+    - tagliatelle # too many JSON keys cannot be changed due to compat
+    - nosnakecase # too many false positives due to the `unix` package
+    - dupword # too many false positives (e.g., in tests)
+    - gocognit
+    - testpackage
+    - goerr113
+    - exhaustivestruct
+    - errorlint
+    - wrapcheck
+    - paralleltest
+    - wsl
+    - godox
+    - tparallel
+    - gomnd
+    - nlreturn
+    - noctx
+    - nestif
+    - predeclared
+    - thelper
+    - ifshort
+    - forbidigo
+    - exhaustive
+    - gofumpt
+    - gci
+    - godot
+    - dupl
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gocyclo
+    - lll
+    - gosec
+    - maligned
+    - musttag # way to many warnings to fix for now, also some false positives
+    - gomoddirectives
+    - containedctx
+    - contextcheck
+    - cyclop
+    - errname
+    - forcetypeassert
+    - ireturn
+    - varnamelen
+    - maintidx
+    - nilnil
+    - nonamedreturns
+    - exhaustruct
+    # deprecated linters
+    - golint # replaced by revive
+    - scopelint # replaced by exportloopref
+    - interfacer
+    - deadcode    # deprecated since v1.49.0, replaced by unused
+    - structcheck # deprecated since v1.49.0, replaced by unused
+    - varcheck    # deprecated since v1.49.0, replaced by unused
+linters-settings:
+  errcheck:
+    check-blank: false
+    ignore: fmt:.*
+  nolintlint:
+    allow-leading-space: false
+    allow-unused: true
+    require-specific: true
+  revive:
+    rules:
+    - name: unused-parameter
+      disabled: true
+
+issues:
+  # Maximum issues count per one linter.
+  # Set to 0 to disable.
+  # Default: 50
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 0

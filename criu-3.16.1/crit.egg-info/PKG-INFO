@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: crit
+Version: 0.0.1
+Summary: CRiu Image Tool
+Home-page: https://github.com/checkpoint-restore/criu
+Author: CRIU team
+Author-email: criu@openvz.org
+License-File: COPYING

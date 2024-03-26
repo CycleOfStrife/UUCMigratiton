@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e
+
+rm -rf /opt/podman
+
+if [ ! -d "/etc/paths.d" ]; then
+    mkdir -p /etc/paths.d
+fi

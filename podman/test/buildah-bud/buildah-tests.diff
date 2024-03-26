@@ -1,0 +1,179 @@
+From 716a55e6ce36c30df4dc9cde3d1b43b8c7d19c9e Mon Sep 17 00:00:00 2001
+From: Ed Santiago <santiago@redhat.com>
+Date: Thu, 6 Oct 2022 17:32:59 -0600
+Subject: [PATCH] tweaks for running buildah tests under podman
+
+Signed-off-by: Ed Santiago <santiago@redhat.com>
+---
+ tests/helpers.bash | 119 +++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 115 insertions(+), 4 deletions(-)
+
+diff --git a/tests/helpers.bash b/tests/helpers.bash
+index 349145f29..3a0348f0b 100644
+--- a/tests/helpers.bash
++++ b/tests/helpers.bash
+@@ -70,6 +70,38 @@ EOF
+     ROOTDIR_OPTS="--root ${TEST_SCRATCH_DIR}/root --runroot ${TEST_SCRATCH_DIR}/runroot --storage-driver ${STORAGE_DRIVER}"
+     BUILDAH_REGISTRY_OPTS="--registries-conf ${TEST_SOURCES}/registries.conf --registries-conf-dir ${TEST_SCRATCH_DIR}/registries.d --short-name-alias-conf ${TEST_SCRATCH_DIR}/cache/shortnames.conf"
+     PODMAN_REGISTRY_OPTS="--registries-conf ${TEST_SOURCES}/registries.conf"
++
++    PODMAN_SERVER_PID=
++    PODMAN_NATIVE="${PODMAN_BINARY} ${ROOTDIR_OPTS} ${PODMAN_REGISTRY_OPTS}"
++    if [[ -n "$REMOTE" ]]; then
++        PODMAN_NATIVE="${PODMAN_BINARY%%-remote} ${ROOTDIR_OPTS} ${PODMAN_REGISTRY_OPTS}"
++        if [[ -n "$PODMAN_SERVER_LOG" ]]; then
++            (
++                echo "---------------------------------"
++                echo "- bats test ${BATS_TEST_NUMBER} : ${BATS_TEST_NAME}"
++            ) >> $PODMAN_SERVER_LOG
++        fi
++
++        # Path to podman socket file
++        local sockdir=/run
++        if is_rootless; then
++            sockdir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
++        fi
++        PODMAN_SOCK_FILE=$sockdir/podman/podman.sock
++        # static CONTAINERS_CONF needed for capabilities test. As of 2021-07-01
++        # no tests in bud.bats override this; if at some point any test does
++        # so, it will probably need to be skip_if_remote()d.
++        env CONTAINERS_CONF_OVERRIDE=${CONTAINERS_CONF_OVERRIDE:-$(dirname ${BASH_SOURCE})/containers.conf} $PODMAN_NATIVE system service --log-level=info --timeout=0 &>>${PODMAN_SERVER_LOG:-/dev/stderr} &
++        PODMAN_SERVER_PID=$!
++        echo ">> pid=$PODMAN_SERVER_PID" >>${PODMAN_SERVER_LOG:-/dev/stderr}
++        local timeout=10
++        while ((timeout > 0)); do
++            test -S $PODMAN_SOCK_FILE && return
++            sleep 0.2
++            timeout=$((timeout - 1))
++        done
++        die "podman server never came up"
++    fi
+ }
+ 
+ function starthttpd() {
+@@ -113,6 +145,32 @@ function teardown_tests() {
+     stop_git_daemon
+     stop_registry
+ 
++    if [[ -n "$PODMAN_SERVER_PID" ]]; then
++        echo "teardown: stopping podman server $PODMAN_SERVER_PID"
++        kill $PODMAN_SERVER_PID
++        wait $PODMAN_SERVER_PID
++        # Socket file should go away once server exits
++        local timeout=10
++        while [[ -S $PODMAN_SOCK_FILE ]]; do
++            timeout=$((timeout - 1))
++            if [[ $timeout -eq 0 ]]; then
++                echo "# WARNING! $PODMAN_SOCK_FILE did not go away" >&3
++                rm -f $PODMAN_SOCK_FILE
++            fi
++            sleep 0.5
++        done
++    fi
++
++    # FIXME! 2023-04-11: under remote + rootless, on the very first test,
++    # we somehow end up with two podman-system-service jobs. The second one
++    # lingers, and prevents BATS from completing, manifesting as a test hang.
++    if is_rootless; then
++        ps auxww | grep "system service" | grep -v grep | while read user pid rest; do
++            echo "# teardown: killing stray server: $user $pid $rest" >&3
++            kill $pid
++        done
++    fi
++
+     # Workaround for #1991 - buildah + overlayfs leaks mount points.
+     # Many tests leave behind /var/tmp/.../root/overlay and sub-mounts;
+     # let's find those and clean them up, otherwise 'rm -rf' fails.
+@@ -202,7 +260,12 @@ function copy() {
+ }
+ 
+ function podman() {
+-    command ${PODMAN_BINARY:-podman} ${PODMAN_REGISTRY_OPTS} ${ROOTDIR_OPTS} "$@"
++    local cmd=${PODMAN_BINARY:-podman}
++    local opts="${PODMAN_REGISTRY_OPTS} ${ROOTDIR_OPTS}"
++    if [[ $cmd =~ remote ]]; then
++        opts=
++    fi
++    command $cmd $opts "$@"
+ }
+ 
+ # There are various scenarios where we would like to execute `tests` as rootless user, however certain commands like `buildah mount`
+@@ -266,8 +329,36 @@ function run_buildah() {
+         --retry)         retry=3;        shift;;  # retry network flakes
+     esac
+ 
++    local podman_or_buildah=${BUILDAH_BINARY}
++    local _opts="${ROOTDIR_OPTS} ${BUILDAH_REGISTRY_OPTS}"
++    if [[ $1 == "build" || $1 == "build-using-dockerfile" || $1 == "bud" ]]; then
++        shift
++        # podman defaults to --layers=true; buildah to --false.
++        # If command line includes explicit --layers, leave it untouched,
++        # but otherwise update command line so podman mimics buildah default.
++        if [[ "$*" =~ --layers || "$*" =~ --squash ]]; then
++            set "build" "--force-rm=false" "$@"
++        else
++            set "build" "--force-rm=false" "--layers=false" "$@"
++        fi
++        podman_or_buildah=${PODMAN_BINARY}
++        _opts="${ROOTDIR_OPTS} ${PODMAN_REGISTRY_OPTS}"
++        if [[ -n "$REMOTE" ]]; then
++            _opts=
++        fi
++
++        # Special case: there's one test that invokes git in such
++        # a way that it exits 128 (which IMO is a bug in git).
++        # podman exits 125 in that case.
++        case $expected_rc in
++            128)   expected_rc=125 ;;
++        esac
++    fi
++    local cmd_basename=$(basename ${podman_or_buildah})
++
++
+     # Remember command args, for possible use in later diagnostic messages
+-    MOST_RECENT_BUILDAH_COMMAND="buildah $*"
++    MOST_RECENT_BUILDAH_COMMAND="$cmd_basename $*"
+ 
+     # If session is rootless and `buildah mount` is invoked, perform unshare,
+     # since normal user cannot mount a filesystem unless they're in a user namespace along with its own mount namespace.
+@@ -281,8 +372,8 @@ function run_buildah() {
+         retry=$(( retry - 1 ))
+ 
+         # stdout is only emitted upon error; this echo is to help a debugger
+-        echo "${_LOG_PROMPT} $BUILDAH_BINARY $*"
+-        run env CONTAINERS_CONF=${CONTAINERS_CONF:-$(dirname ${BASH_SOURCE})/containers.conf} timeout --foreground --kill=10 $BUILDAH_TIMEOUT ${BUILDAH_BINARY} ${BUILDAH_REGISTRY_OPTS} ${ROOTDIR_OPTS} "$@"
++        echo "${_LOG_PROMPT} $cmd_basename $*"
++        run env CONTAINERS_CONF=${CONTAINERS_CONF:-$(dirname ${BASH_SOURCE})/containers.conf} timeout --foreground --kill=10 $BUILDAH_TIMEOUT ${podman_or_buildah} ${_opts} "$@"
+         # without "quotes", multiple lines are glommed together into one
+         if [ -n "$output" ]; then
+             echo "$output"
+@@ -621,6 +712,26 @@ function skip_if_no_docker() {
+   fi
+ }
+ 
++####################
++#  skip_if_remote  #  (only applicable for podman)
++####################
++function skip_if_remote() {
++    if [[ -n "$REMOTE" ]]; then
++        skip "${1:-test does not work with podman-remote}"
++    fi
++}
++
++#############################
++#  skip_if_rootless_remote  #  (only applicable for podman)
++#############################
++function skip_if_rootless_remote() {
++    if [[ -n "$REMOTE" ]]; then
++        if is_rootless; then
++            skip "${1:-test does not work with rootless podman-remote}"
++        fi
++    fi
++}
++
+ function start_git_daemon() {
+   daemondir=${TEST_SCRATCH_DIR}/git-daemon
+   mkdir -p ${daemondir}/repo
+-- 
+2.39.2
+
