@@ -37,6 +37,7 @@ podman conatienr checkpoint --live-migration --predict-mode="SSPD" --dirty-file=
 
 ```
 #linux02
+```
 mkdir /migration
 cd /migration
 podman container restore -i <the last file> mybox
