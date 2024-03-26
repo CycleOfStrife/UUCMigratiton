@@ -1,8 +1,0 @@
-test_errno
-test_iters
-test_notify
-test_self
-test_sub
-test_join_ns
-output/
-libcriu.so.*
