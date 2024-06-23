@@ -1,0 +1,9 @@
+#!/bin/bash
+
+for file in `ls *.pdf`
+do
+	echo processing $file
+	pdfcrop $file $file
+	echo $file done
+done
+
