@@ -1,4 +1,4 @@
-# UUCMigratiton: User-Unaware Container Live Migration
+# U<sup>2</sup>CMigration: User-Unaware Container Live Migration Strategy
 # Getting Started
 ## Dependencies
 
@@ -27,7 +27,7 @@ make && make install
 cd Podman
 make && make install
 ```
-## Run the UUCMigratiton System
+## Run the U<sup>2</sup>CMigration System
 
 
 ```shell
