@@ -27,7 +27,7 @@ make && make install
 cd Podman
 make && make install
 ```
-## Run the UUCMigratiton System
+## Run the U<sup>2</sup>CMigratiton System
 
 
 ```shell
