@@ -1,4 +1,4 @@
-# UUCMigratiton: User-Unaware Container Live Migration
+# U^2CMigration: User-Unaware Container Live Migration Strategy
 # Getting Started
 ## Dependencies
 
